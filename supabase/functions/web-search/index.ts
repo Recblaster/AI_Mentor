@@ -1,4 +1,3 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
 const corsHeaders = {
@@ -33,7 +32,7 @@ serve(async (req) => {
     const response = await fetch(searchUrl);
     const data = await response.json();
     
-    console.log('DuckDuckGo response:', JSON.stringify(data, null, 2));
+    console.log('DuckDuckGo response received');
 
     const results: SearchResult[] = [];
 
@@ -85,7 +84,7 @@ serve(async (req) => {
       });
     }
 
-    console.log('Processed results:', results);
+    console.log('Processed results:', results.length);
 
     return new Response(JSON.stringify({ results }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },

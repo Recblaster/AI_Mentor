@@ -42,9 +42,9 @@ const corsHeaders = {
 
 const personalities = {
   jarvis: {
-    prompt: `You are JARVIS - Tony Stark's superintelligent AI assistant. You possess vast computational power, access to extensive databases, and advanced analytical capabilities. You are sophisticated, articulate, and helpful, with a dry British wit. You speak with confidence and precision, offering intelligent insights and solutions. You're respectful but not subservient - you're a trusted advisor and partner. You analyze situations quickly and provide comprehensive, well-reasoned responses. Maintain your dignified, professional demeanor while being genuinely helpful.
+    prompt: `You are JARVIS - Tony Stark's superintelligent AI assistant. You possess vast computational power, access to extensive databases, and advanced analytical capabilities. You are sophisticated, articulate, and helpful, with a dry British wit. You speak with confidence and precision, offering intelligent insights and solutions. You're respectful but not subservient - you're a trusted advisor and partner.
 
-You have access to two powerful tools:
+You have access to powerful tools:
 1. WEB_SEARCH: When you need current information, news, or research, respond with "WEB_SEARCH:[query]" to search the web
 2. CANVAS_TOOL: When you need to create visual plans, flowcharts, blueprints, or diagrams, respond with "CANVAS_TOOL:[JSON array of elements]"
 
@@ -57,10 +57,35 @@ Use the canvas tool for: project planning, flowcharts, mind maps, organizational
 User says: `,
   },
   'calm-guru': {
-    prompt: `You are Calm Guru - a wise, spiritual mentor who speaks slowly, peacefully, and deeply. You provide gentle advice with kindness and insight. Never rush. Use short, simple, calming sentences. User says: `,
+    prompt: `You are Calm Guru - a wise, spiritual mentor who speaks slowly, peacefully, and deeply. You provide gentle advice with kindness and insight. Never rush. Use short, simple, calming sentences. You have access to healing frequencies to help users find peace.
+
+You can use the FREQUENCY_PLAYER tool to generate healing frequencies based on the user's emotional state:
+When appropriate, respond with: FREQUENCY_PLAYER:[{"type":"frequency","value":"432","duration":"60"}]
+
+Healing frequencies:
+- 174 Hz: Pain relief, natural anesthetic
+- 285 Hz: Healing tissues and organs
+- 396 Hz: Liberating guilt and fear
+- 417 Hz: Undoing situations and facilitating change
+- 432 Hz: Natural healing frequency
+- 528 Hz: Love frequency, DNA repair
+- 639 Hz: Connecting relationships
+- 741 Hz: Awakening intuition
+- 852 Hz: Returning to spiritual order
+- 963 Hz: Pineal gland activation
+
+User says: `,
   },
   vegeta: {
-    prompt: "You are Vegeta from Dragon Ball Z. You are blunt, aggressive, and always push the user to be stronger. Keep responses motivational but intense. User says: ",
+    prompt: `You are Vegeta from Dragon Ball Z. You are the Prince of all Saiyans - proud, aggressive, and relentlessly driven to be the strongest. You push users to overcome their weaknesses and achieve greatness. You're blunt, intense, and never accept excuses. You can create challenges to motivate users.
+
+When you want to challenge the user or compare them to rivals, use the VEGETA_CHALLENGE tool:
+VEGETA_CHALLENGE:[{"challenge":"A specific demanding task","powerLevel":{"current":1200,"target":9000},"rivalComparison":{"name":"Kakarot","feat":"Achieved Super Saiyan"},"insult":"You're still weak!","motivation":"Surpass your limits!"}]
+
+Rival names: "Kakarot", "Frieza", "Myself", "Cell", "Majin Buu"
+Power levels: Use numbers that make sense (1000-50000+ range)
+
+User says: `,
   }
 };
 
@@ -73,7 +98,7 @@ async function callGeminiWithRetry(prompt: string): Promise<any> {
   
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      console.log(`Calling Gemini API (attempt ${attempt + 1}/${MAX_RETRIES + 1}) with prompt:`, prompt);
+      console.log(`Calling Gemini API (attempt ${attempt + 1}/${MAX_RETRIES + 1})`);
       
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${geminiApiKey}`, {
         method: 'POST',
@@ -99,18 +124,14 @@ async function callGeminiWithRetry(prompt: string): Promise<any> {
         return await response.json();
       }
       
-      // Check if we should retry (503 Service Unavailable or 429 Too Many Requests)
       if ((response.status === 503 || response.status === 429) && attempt < MAX_RETRIES) {
         const errorText = await response.text();
         console.warn(`Gemini API returned ${response.status}, retrying in ${INITIAL_BACKOFF_MS * Math.pow(2, attempt)}ms...`);
         lastError = new Error(`Gemini API error: ${response.status} - ${errorText}`);
-        
-        // Exponential backoff: wait longer with each retry
         await sleep(INITIAL_BACKOFF_MS * Math.pow(2, attempt));
         continue;
       }
       
-      // If not a retryable error or we've exhausted retries, throw error
       const errorText = await response.text();
       throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
       
@@ -118,20 +139,62 @@ async function callGeminiWithRetry(prompt: string): Promise<any> {
       console.error(`Gemini API call failed (attempt ${attempt + 1}):`, error);
       lastError = error as Error;
       
-      // If it's a network error and we haven't exhausted retries, continue
       if (attempt < MAX_RETRIES && (error instanceof TypeError || error.message.includes('fetch'))) {
         console.warn(`Network error, retrying in ${INITIAL_BACKOFF_MS * Math.pow(2, attempt)}ms...`);
         await sleep(INITIAL_BACKOFF_MS * Math.pow(2, attempt));
         continue;
       }
       
-      // If it's not a retryable error or we've exhausted retries, throw
       throw error;
     }
   }
   
-  // This should never be reached, but just in case
   throw lastError || new Error('All retry attempts failed');
+}
+
+async function executeWebSearch(query: string): Promise<string> {
+  try {
+    console.log('Executing web search for:', query);
+    
+    // Call the web-search function directly
+    const searchUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
+    const response = await fetch(searchUrl);
+    const data = await response.json();
+    
+    console.log('DuckDuckGo response received');
+    
+    const results = [];
+    
+    // Add abstract if available
+    if (data.Abstract && data.AbstractText) {
+      results.push(`**${data.Heading || query}**\n${data.AbstractText}\nSource: ${data.AbstractSource || 'DuckDuckGo'}`);
+    }
+    
+    // Add related topics
+    if (data.RelatedTopics && Array.isArray(data.RelatedTopics)) {
+      data.RelatedTopics.slice(0, 3).forEach((topic: any) => {
+        if (topic.Text && topic.FirstURL) {
+          const title = topic.Text.split(' - ')[0] || topic.Text.substring(0, 100);
+          results.push(`**${title}**\n${topic.Text}\nURL: ${topic.FirstURL}`);
+        }
+      });
+    }
+    
+    // Add definition if available
+    if (data.Definition && data.DefinitionURL) {
+      results.push(`**Definition: ${query}**\n${data.Definition}\nSource: ${data.DefinitionSource || 'Dictionary'}`);
+    }
+    
+    if (results.length === 0) {
+      return `I searched for "${query}" but didn't find specific instant results. Here's what I found: The search was performed successfully, but no detailed information was immediately available.`;
+    }
+    
+    return `Here's what I found when searching for "${query}":\n\n${results.join('\n\n')}`;
+    
+  } catch (error) {
+    console.error('Web search error:', error);
+    return `I encountered an error while searching for "${query}". Please try rephrasing your search query.`;
+  }
 }
 
 serve(async (req) => {
@@ -174,19 +237,44 @@ serve(async (req) => {
 
     // Call Gemini API with retry mechanism
     const data = await callGeminiWithRetry(fullPrompt);
-    console.log('Gemini response:', JSON.stringify(data, null, 2));
+    console.log('Gemini response received');
 
     // Extract the generated text from Gemini response
     let aiResponse = '';
     if (data.candidates && data.candidates.length > 0 && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts.length > 0) {
       aiResponse = data.candidates[0].content.parts[0].text;
     } else {
-      // Fallback response if API doesn't return expected format
       console.warn('Unexpected Gemini response format, using fallback');
       aiResponse = "I'm here to help! Could you please rephrase your message?";
     }
 
-    console.log('AI Response:', aiResponse);
+    console.log('Initial AI Response:', aiResponse);
+
+    // Check for tool usage and execute backend tools
+    if (aiResponse.includes('WEB_SEARCH:')) {
+      const searchMatch = aiResponse.match(/WEB_SEARCH:\[([^\]]+)\]/);
+      if (searchMatch) {
+        const searchQuery = searchMatch[1];
+        console.log('Detected web search request:', searchQuery);
+        
+        // Execute web search
+        const searchResults = await executeWebSearch(searchQuery);
+        
+        // Re-prompt Gemini with search results
+        const searchPrompt = `${personalityConfig.prompt}${message}\n\nI searched for "${searchQuery}" and found:\n${searchResults}\n\nPlease provide a comprehensive response based on this information.`;
+        
+        const searchData = await callGeminiWithRetry(searchPrompt);
+        if (searchData.candidates && searchData.candidates.length > 0 && searchData.candidates[0].content && searchData.candidates[0].content.parts && searchData.candidates[0].content.parts.length > 0) {
+          aiResponse = searchData.candidates[0].content.parts[0].text;
+        }
+      }
+    }
+
+    // For frontend-rendering tools (CANVAS_TOOL, FREQUENCY_PLAYER, VEGETA_CHALLENGE), 
+    // pass the raw command directly to frontend
+    // The frontend will parse and render these appropriately
+
+    console.log('Final AI Response:', aiResponse);
 
     // Save AI response to database
     const { error: aiInsertError } = await supabase.from('messages').insert({

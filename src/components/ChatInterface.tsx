@@ -6,14 +6,14 @@ import 'katex/dist/katex.min.css';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Send } from "lucide-react";
+import { Send, Search, Grid3X3 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from "@/integrations/supabase/client";
 import { format } from 'date-fns';
 import { CanvasWorkspace } from './CanvasWorkspace';
-import { WebSearchResults } from './WebSearchResults';
-import { Search, Grid3X3 } from 'lucide-react';
+import { FrequencyPlayer } from './FrequencyPlayer';
+import { VegetaChallengeDisplay } from './VegetaChallengeDisplay';
 
 interface Message {
   id: string;
@@ -36,10 +36,6 @@ export const ChatInterface = ({ sessionId, personality, personalityName, onBack 
   const [loadingMessages, setLoadingMessages] = useState(true);
   const [showCanvas, setShowCanvas] = useState(false);
   const [canvasElements, setCanvasElements] = useState([]);
-  const [showWebSearch, setShowWebSearch] = useState(false);
-  const [searchResults, setSearchResults] = useState([]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isSearching, setIsSearching] = useState(false);
   const { user } = useAuth();
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -134,37 +130,8 @@ export const ChatInterface = ({ sessionId, personality, personalityName, onBack 
     }
   };
 
-  const handleWebSearch = async (query: string) => {
-    setSearchQuery(query);
-    setIsSearching(true);
-    setShowWebSearch(true);
-    
-    try {
-      const { data, error } = await supabase.functions.invoke('web-search', {
-        body: { query }
-      });
-      
-      if (error) throw error;
-      setSearchResults(data?.results || []);
-    } catch (error) {
-      console.error('Web search error:', error);
-      toast({
-        title: "Search Error",
-        description: error?.message || "Failed to perform web search. Please try again.",
-        variant: "destructive"
-      });
-      setSearchResults([]);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const handleCanvasTool = () => {
-    setShowCanvas(true);
-  };
-
   const renderMessage = (message: Message) => {
-    // Check if message contains tool responses
+    // Check for tool responses
     if (message.content.includes('CANVAS_TOOL:')) {
       const canvasData = message.content.match(/CANVAS_TOOL:(.+)/);
       if (canvasData) {
@@ -201,32 +168,46 @@ export const ChatInterface = ({ sessionId, personality, personalityName, onBack 
       }
     }
 
-    if (message.content.includes('WEB_SEARCH:')) {
-      const searchData = message.content.match(/WEB_SEARCH:(.+)/);
-      if (searchData) {
-        const query = searchData[1];
-        return (
-          <div className="space-y-3">
-            <div className="flex items-center space-x-2 text-sm text-blue-600">
-              <Search className="h-4 w-4" />
-              <span>Web Search Performed</span>
+    if (message.content.includes('FREQUENCY_PLAYER:')) {
+      const frequencyData = message.content.match(/FREQUENCY_PLAYER:(.+)/);
+      if (frequencyData) {
+        try {
+          const params = JSON.parse(frequencyData[1]);
+          const frequency = parseInt(params.value) || 432;
+          const duration = parseInt(params.duration) || 60;
+          
+          return (
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2 text-sm text-green-600">
+                <span>🎵</span>
+                <span>Healing Frequency Generated</span>
+              </div>
+              <FrequencyPlayer frequency={frequency} duration={duration} />
             </div>
-            <div className="bg-blue-50 dark:bg-blue-950/20 p-4 rounded-lg border border-blue-200 dark:border-blue-800">
-              <p className="text-sm text-blue-800 dark:text-blue-200 mb-3">
-                I searched the web for: "{query}"
-              </p>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => handleWebSearch(query)}
-                className="text-blue-600 border-blue-300 hover:bg-blue-50"
-              >
-                <Search className="h-4 w-4 mr-2" />
-                View Results
-              </Button>
+          );
+        } catch (e) {
+          console.error('Failed to parse frequency data:', e);
+        }
+      }
+    }
+
+    if (message.content.includes('VEGETA_CHALLENGE:')) {
+      const challengeData = message.content.match(/VEGETA_CHALLENGE:(.+)/);
+      if (challengeData) {
+        try {
+          const challenge = JSON.parse(challengeData[1]);
+          return (
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2 text-sm text-red-600">
+                <span>⚡</span>
+                <span>Saiyan Challenge Issued</span>
+              </div>
+              <VegetaChallengeDisplay {...challenge} />
             </div>
-          </div>
-        );
+          );
+        } catch (e) {
+          console.error('Failed to parse challenge data:', e);
+        }
       }
     }
 
@@ -284,9 +265,9 @@ export const ChatInterface = ({ sessionId, personality, personalityName, onBack 
 
   const getWelcomeMessage = (personality: string) => {
     switch (personality) {
-      case 'jarvis': return "Hello! I'm Jarvis, your superintelligent AI assistant. How can I help you today?";
-      case 'calm-guru': return "Welcome, dear friend. I am here to guide you toward inner peace. How may I help you today?";
-      case 'vegeta': return "Listen up! I'm Vegeta, and I'm here to push you beyond your limits. What do you need to overcome?";
+      case 'jarvis': return "Hello! I'm Jarvis, your superintelligent AI assistant. I can search the web and create visual blueprints. How can I help you today?";
+      case 'calm-guru': return "Welcome, dear friend. I am here to guide you toward inner peace with healing frequencies. How may I help you today?";
+      case 'vegeta': return "Listen up! I'm Vegeta, and I'm here to push you beyond your limits with challenges. What do you need to overcome?";
       default: return "How can I assist you today?";
     }
   };
@@ -307,16 +288,6 @@ export const ChatInterface = ({ sessionId, personality, personalityName, onBack 
           elements={canvasElements}
           onElementsChange={setCanvasElements}
           onClose={() => setShowCanvas(false)}
-        />
-      )}
-
-      {/* Web Search Results */}
-      {showWebSearch && (
-        <WebSearchResults
-          query={searchQuery}
-          results={searchResults}
-          isLoading={isSearching}
-          onClose={() => setShowWebSearch(false)}
         />
       )}
 
@@ -394,18 +365,18 @@ export const ChatInterface = ({ sessionId, personality, personalityName, onBack 
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => handleWebSearch(inputMessage || 'latest news')}
+                onClick={() => setInputMessage(prev => prev + " [Search the web for current information]")}
                 className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/20"
-                title="Web Search"
+                title="Request Web Search"
               >
                 <Search className="h-4 w-4" />
               </Button>
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={handleCanvasTool}
+                onClick={() => setInputMessage(prev => prev + " [Create a visual blueprint/flowchart]")}
                 className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/20"
-                title="Canvas Workspace"
+                title="Request Canvas Blueprint"
               >
                 <Grid3X3 className="h-4 w-4" />
               </Button>
