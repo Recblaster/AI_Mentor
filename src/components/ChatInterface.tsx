@@ -14,6 +14,8 @@ import { format } from 'date-fns';
 import { CanvasWorkspace } from './CanvasWorkspace';
 import { FrequencyPlayer } from './FrequencyPlayer';
 import { VegetaChallengeDisplay } from './VegetaChallengeDisplay';
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Badge } from "@/components/ui/badge";
 
 interface Message {
   id: string;
@@ -36,6 +38,8 @@ export const ChatInterface = ({ sessionId, personality, personalityName, onBack 
   const [loadingMessages, setLoadingMessages] = useState(true);
   const [showCanvas, setShowCanvas] = useState(false);
   const [canvasElements, setCanvasElements] = useState([]);
+  const [activeTools, setActiveTools] = useState<string[]>([]);
+  const [showToolsPopover, setShowToolsPopover] = useState(false);
   const { user } = useAuth();
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -76,6 +80,34 @@ export const ChatInterface = ({ sessionId, personality, personalityName, onBack 
     fetchMessages();
   }, [sessionId, user]);
 
+  const toggleTool = (toolName: string) => {
+    setActiveTools(prev => 
+      prev.includes(toolName) 
+        ? prev.filter(t => t !== toolName)
+        : [...prev, toolName]
+    );
+  };
+
+  const getAvailableTools = () => {
+    switch (personality) {
+      case 'jarvis':
+        return [
+          { id: 'web_search', name: 'Web search', icon: '🌐' },
+          { id: 'canvas', name: 'Canvas', icon: '🎨' }
+        ];
+      case 'calm-guru':
+        return [
+          { id: 'frequency_player', name: 'Healing frequencies', icon: '🎵' }
+        ];
+      case 'vegeta':
+        return [
+          { id: 'vegeta_challenge', name: 'Saiyan challenges', icon: '⚡' }
+        ];
+      default:
+        return [];
+    }
+  };
+
   const sendMessage = async () => {
     if (!inputMessage.trim() || !user || isLoading) return;
 
@@ -89,7 +121,8 @@ export const ChatInterface = ({ sessionId, personality, personalityName, onBack 
           message: userMessage,
           personality,
           sessionId,
-          userId: user.id
+          userId: user.id,
+          activeTools
         }
       });
 
@@ -359,28 +392,52 @@ export const ChatInterface = ({ sessionId, personality, personalityName, onBack 
       {/* Input */}
       <div className="p-4 border-t border-gray-700 bg-gray-800/50 backdrop-blur-sm">
         <div className="max-w-4xl mx-auto flex items-center space-x-3">
-          {/* Jarvis Tools */}
-          {personality === 'jarvis' && (
-            <div className="flex items-center space-x-2">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setInputMessage(prev => prev + " [Search the web for current information]")}
-                className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/20"
-                title="Request Web Search"
-              >
-                <Search className="h-4 w-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setInputMessage(prev => prev + " [Create a visual blueprint/flowchart]")}
-                className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/20"
-                title="Request Canvas Blueprint"
-              >
-                <Grid3X3 className="h-4 w-4" />
-              </Button>
-            </div>
+          {/* Tools Popover */}
+          {getAvailableTools().length > 0 && (
+            <Popover open={showToolsPopover} onOpenChange={setShowToolsPopover}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className={`relative ${activeTools.length > 0 ? 'bg-primary/10 border-primary/30' : ''}`}
+                >
+                  <Grid3X3 className="h-4 w-4 mr-2" />
+                  Tools
+                  {activeTools.length > 0 && (
+                    <Badge 
+                      variant="secondary" 
+                      className="ml-2 h-5 w-5 p-0 flex items-center justify-center text-xs"
+                    >
+                      {activeTools.length}
+                    </Badge>
+                  )}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-64 p-2" side="top" align="start">
+                <div className="space-y-1">
+                  <div className="px-2 py-1 text-sm font-medium text-muted-foreground">
+                    Available Tools
+                  </div>
+                  {getAvailableTools().map((tool) => (
+                    <Button
+                      key={tool.id}
+                      variant={activeTools.includes(tool.id) ? "default" : "ghost"}
+                      size="sm"
+                      className="w-full justify-start"
+                      onClick={() => toggleTool(tool.id)}
+                    >
+                      <span className="mr-2">{tool.icon}</span>
+                      {tool.name}
+                      {activeTools.includes(tool.id) && (
+                        <Badge variant="secondary" className="ml-auto">
+                          ON
+                        </Badge>
+                      )}
+                    </Button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
           )}
           
           <Input
@@ -399,6 +456,21 @@ export const ChatInterface = ({ sessionId, personality, personalityName, onBack 
             <Send className="h-4 w-4" />
           </Button>
         </div>
+        
+        {/* Active Tools Display */}
+        {activeTools.length > 0 && (
+          <div className="max-w-4xl mx-auto mt-2 flex items-center space-x-2">
+            <span className="text-xs text-muted-foreground">Active tools:</span>
+            {activeTools.map((toolId) => {
+              const tool = getAvailableTools().find(t => t.id === toolId);
+              return tool ? (
+                <Badge key={toolId} variant="secondary" className="text-xs">
+                  {tool.icon} {tool.name}
+                </Badge>
+              ) : null;
+            })}
+          </div>
+        )}
       </div>
     </>
   );

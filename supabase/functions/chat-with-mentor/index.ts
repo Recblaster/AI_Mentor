@@ -203,8 +203,8 @@ serve(async (req) => {
   }
 
   try {
-    const { message, personality, sessionId, userId } = await req.json();
-    console.log('Received request:', { message, personality, sessionId, userId });
+    const { message, personality, sessionId, userId, activeTools = [] } = await req.json();
+    console.log('Received request:', { message, personality, sessionId, userId, activeTools });
 
     if (!geminiApiKey) {
       throw new Error('Gemini API key not configured');
@@ -233,7 +233,14 @@ serve(async (req) => {
     }
 
     // Prepare the prompt with user input
-    const fullPrompt = personalityConfig.prompt + message;
+    let fullPrompt = personalityConfig.prompt;
+    
+    // Add active tools context
+    if (activeTools.length > 0) {
+      fullPrompt += `\n\nACTIVE TOOLS: ${activeTools.join(', ')}. Use these tools when appropriate for the user's request.\n\n`;
+    }
+    
+    fullPrompt += message;
 
     // Call Gemini API with retry mechanism
     const data = await callGeminiWithRetry(fullPrompt);
@@ -257,8 +264,22 @@ serve(async (req) => {
         const searchQuery = searchMatch[1];
         console.log('Detected web search request:', searchQuery);
         
-        // Execute web search
-        const searchResults = await executeWebSearch(searchQuery);
+        // Call tools function for web search
+        const toolsUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/tools`;
+        const toolsResponse = await fetch(toolsUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            tool: 'web_search',
+            params: { query: searchQuery }
+          })
+        });
+        
+        const toolsData = await toolsResponse.json();
+        const searchResults = toolsData.result || 'Search failed';
         
         // Re-prompt Gemini with search results
         const searchPrompt = `${personalityConfig.prompt}${message}\n\nI searched for "${searchQuery}" and found:\n${searchResults}\n\nPlease provide a comprehensive response based on this information.`;
