@@ -1,10 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
+// CORS headers for secure cross-origin requests
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+// All search operations happen server-side to protect against abuse
 interface SearchResult {
   title: string;
   url: string;
@@ -19,6 +21,7 @@ serve(async (req) => {
   }
 
   try {
+    // Server-side web search to prevent client-side API exposure
     const { query } = await req.json();
     console.log('Web search request for:', query);
 

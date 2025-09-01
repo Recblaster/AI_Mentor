@@ -2,6 +2,7 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.2';
 
+// All sensitive API keys are now server-side only
 interface Database {
   public: {
     Tables: {
@@ -30,6 +31,15 @@ interface Database {
 const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+
+// Validate that all required environment variables are present
+if (!geminiApiKey) {
+  console.error('GEMINI_API_KEY environment variable is not set');
+}
+
+if (!supabaseUrl || !supabaseServiceKey) {
+  console.error('Supabase environment variables are not properly configured');
+}
 
 // Retry configuration
 const MAX_RETRIES = 3;
@@ -197,6 +207,7 @@ async function executeWebSearch(query: string): Promise<string> {
   }
 }
 
+// These environment variables are only available on the server side
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });

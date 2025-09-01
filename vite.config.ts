@@ -9,6 +9,11 @@ export default defineConfig(({ mode }) => ({
     host: "::",
     port: 8080,
   },
+  // Environment variables starting with VITE_ are exposed to client
+  // Only expose non-sensitive configuration
+  define: {
+    __APP_VERSION__: JSON.stringify(process.env.npm_package_version || '1.0.0'),
+  },
   plugins: [
     react(),
     mode === 'development' &&

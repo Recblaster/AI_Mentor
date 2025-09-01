@@ -116,6 +116,8 @@ export const ChatInterface = ({ sessionId, personality, personalityName, onBack 
     setIsLoading(true);
 
     try {
+      // All AI processing happens server-side via Supabase Edge Functions
+      // No API keys or sensitive data exposed to client
       const response = await supabase.functions.invoke('chat-with-mentor', {
         body: {
           message: userMessage,

@@ -60,6 +60,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signUp = async (email: string, password: string, displayName?: string) => {
     try {
+      // Authentication happens through Supabase - no API keys exposed
       const redirectUrl = `${window.location.origin}/app`;
       
       console.log('Attempting signup with:', { email, displayName, redirectUrl });
