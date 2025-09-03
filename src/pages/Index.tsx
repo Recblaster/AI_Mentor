@@ -47,22 +47,33 @@ const Index = () => {
 
   const handlePersonalitySelect = async (personality: Personality) => {
     try {
+      console.log('Creating new session with personality:', personality);
+      
       const { data, error } = await supabase
         .from('sessions')
         .insert({
           user_id: user.id,
           personality_used: personality,
-          message_count: 0
+          message_count: 0,
+          started_at: new Date().toISOString(),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         })
         .select()
         .single();
 
       if (error) throw error;
       
+      console.log('Session created successfully:', data.id);
       setSelectedPersonality(personality);
       setCurrentSessionId(data.id);
     } catch (error) {
       console.error('Error creating session:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create new session. Please try again.",
+        variant: "destructive"
+      });
     }
   };
 

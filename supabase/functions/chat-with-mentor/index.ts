@@ -1,8 +1,11 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.50.2';
 
-// All sensitive API keys are now server-side only
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+};
+
 interface Database {
   public: {
     Tables: {
@@ -31,24 +34,6 @@ interface Database {
 const geminiApiKey = Deno.env.get('GEMINI_API_KEY');
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-
-// Validate that all required environment variables are present
-if (!geminiApiKey) {
-  console.error('GEMINI_API_KEY environment variable is not set');
-}
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  console.error('Supabase environment variables are not properly configured');
-}
-
-// Retry configuration
-const MAX_RETRIES = 3;
-const INITIAL_BACKOFF_MS = 1000;
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
 
 const personalities = {
   jarvis: {
@@ -99,74 +84,59 @@ User says: `,
   }
 };
 
-async function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function callGeminiWithRetry(prompt: string): Promise<any> {
-  let lastError: Error | null = null;
-  
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      console.log(`Calling Gemini API (attempt ${attempt + 1}/${MAX_RETRIES + 1})`);
-      
-      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${geminiApiKey}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text: prompt
-            }]
-          }],
-          generationConfig: {
-            temperature: 0.7,
-            maxOutputTokens: 1000,
-          }
-        }),
-      });
-
-      console.log(`Gemini API response status (attempt ${attempt + 1}):`, response.status);
-      
-      if (response.ok) {
-        return await response.json();
-      }
-      
-      if ((response.status === 503 || response.status === 429) && attempt < MAX_RETRIES) {
-        const errorText = await response.text();
-        console.warn(`Gemini API returned ${response.status}, retrying in ${INITIAL_BACKOFF_MS * Math.pow(2, attempt)}ms...`);
-        lastError = new Error(`Gemini API error: ${response.status} - ${errorText}`);
-        await sleep(INITIAL_BACKOFF_MS * Math.pow(2, attempt));
-        continue;
-      }
-      
-      const errorText = await response.text();
-      throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
-      
-    } catch (error) {
-      console.error(`Gemini API call failed (attempt ${attempt + 1}):`, error);
-      lastError = error as Error;
-      
-      if (attempt < MAX_RETRIES && (error instanceof TypeError || error.message.includes('fetch'))) {
-        console.warn(`Network error, retrying in ${INITIAL_BACKOFF_MS * Math.pow(2, attempt)}ms...`);
-        await sleep(INITIAL_BACKOFF_MS * Math.pow(2, attempt));
-        continue;
-      }
-      
-      throw error;
+async function callGeminiAPI(prompt: string): Promise<string> {
+  try {
+    console.log('Calling Gemini API...');
+    
+    if (!geminiApiKey) {
+      throw new Error('Gemini API key not configured');
     }
+
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${geminiApiKey}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: prompt
+          }]
+        }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 1000,
+        }
+      }),
+    });
+
+    console.log('Gemini API response status:', response.status);
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Gemini API error:', errorText);
+      throw new Error(`Gemini API error: ${response.status} - ${errorText}`);
+    }
+
+    const data = await response.json();
+    console.log('Gemini response received successfully');
+
+    if (data.candidates && data.candidates.length > 0 && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts.length > 0) {
+      return data.candidates[0].content.parts[0].text;
+    } else {
+      console.warn('Unexpected Gemini response format');
+      return "I'm here to help! Could you please rephrase your message?";
+    }
+  } catch (error) {
+    console.error('Error calling Gemini API:', error);
+    throw error;
   }
-  
-  throw lastError || new Error('All retry attempts failed');
 }
 
 async function executeWebSearch(query: string): Promise<string> {
   try {
     console.log('Executing web search for:', query);
     
-    // Call the web-search function directly
     const searchUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1&skip_disambig=1`;
     const response = await fetch(searchUrl);
     const data = await response.json();
@@ -175,12 +145,10 @@ async function executeWebSearch(query: string): Promise<string> {
     
     const results = [];
     
-    // Add abstract if available
     if (data.Abstract && data.AbstractText) {
       results.push(`**${data.Heading || query}**\n${data.AbstractText}\nSource: ${data.AbstractSource || 'DuckDuckGo'}`);
     }
     
-    // Add related topics
     if (data.RelatedTopics && Array.isArray(data.RelatedTopics)) {
       data.RelatedTopics.slice(0, 3).forEach((topic: any) => {
         if (topic.Text && topic.FirstURL) {
@@ -190,7 +158,6 @@ async function executeWebSearch(query: string): Promise<string> {
       });
     }
     
-    // Add definition if available
     if (data.Definition && data.DefinitionURL) {
       results.push(`**Definition: ${query}**\n${data.Definition}\nSource: ${data.DefinitionSource || 'Dictionary'}`);
     }
@@ -207,7 +174,6 @@ async function executeWebSearch(query: string): Promise<string> {
   }
 }
 
-// These environment variables are only available on the server side
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -217,8 +183,8 @@ serve(async (req) => {
     const { message, personality, sessionId, userId, activeTools = [] } = await req.json();
     console.log('Received request:', { message, personality, sessionId, userId, activeTools });
 
-    if (!geminiApiKey) {
-      throw new Error('Gemini API key not configured');
+    if (!message || !personality || !sessionId || !userId) {
+      throw new Error('Missing required parameters');
     }
 
     const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey);
@@ -253,19 +219,8 @@ serve(async (req) => {
     
     fullPrompt += message;
 
-    // Call Gemini API with retry mechanism
-    const data = await callGeminiWithRetry(fullPrompt);
-    console.log('Gemini response received');
-
-    // Extract the generated text from Gemini response
-    let aiResponse = '';
-    if (data.candidates && data.candidates.length > 0 && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts.length > 0) {
-      aiResponse = data.candidates[0].content.parts[0].text;
-    } else {
-      console.warn('Unexpected Gemini response format, using fallback');
-      aiResponse = "I'm here to help! Could you please rephrase your message?";
-    }
-
+    // Call Gemini API
+    let aiResponse = await callGeminiAPI(fullPrompt);
     console.log('Initial AI Response:', aiResponse);
 
     // Check for tool usage and execute backend tools
@@ -275,36 +230,14 @@ serve(async (req) => {
         const searchQuery = searchMatch[1];
         console.log('Detected web search request:', searchQuery);
         
-        // Call tools function for web search
-        const toolsUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/tools`;
-        const toolsResponse = await fetch(toolsUrl, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            tool: 'web_search',
-            params: { query: searchQuery }
-          })
-        });
-        
-        const toolsData = await toolsResponse.json();
-        const searchResults = toolsData.result || 'Search failed';
+        const searchResults = await executeWebSearch(searchQuery);
         
         // Re-prompt Gemini with search results
         const searchPrompt = `${personalityConfig.prompt}${message}\n\nI searched for "${searchQuery}" and found:\n${searchResults}\n\nPlease provide a comprehensive response based on this information.`;
         
-        const searchData = await callGeminiWithRetry(searchPrompt);
-        if (searchData.candidates && searchData.candidates.length > 0 && searchData.candidates[0].content && searchData.candidates[0].content.parts && searchData.candidates[0].content.parts.length > 0) {
-          aiResponse = searchData.candidates[0].content.parts[0].text;
-        }
+        aiResponse = await callGeminiAPI(searchPrompt);
       }
     }
-
-    // For frontend-rendering tools (CANVAS_TOOL, FREQUENCY_PLAYER, VEGETA_CHALLENGE), 
-    // pass the raw command directly to frontend
-    // The frontend will parse and render these appropriately
 
     console.log('Final AI Response:', aiResponse);
 
@@ -326,7 +259,19 @@ serve(async (req) => {
     });
   } catch (error) {
     console.error('Error in chat-with-mentor function:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    
+    // Provide more specific error messages
+    let errorMessage = 'An unexpected error occurred. Please try again.';
+    
+    if (error.message.includes('GEMINI_API_KEY')) {
+      errorMessage = 'AI service is not properly configured. Please contact support.';
+    } else if (error.message.includes('quota') || error.message.includes('429')) {
+      errorMessage = 'AI service is temporarily unavailable due to high demand. Please try again in a few minutes.';
+    } else if (error.message.includes('network') || error.message.includes('fetch')) {
+      errorMessage = 'Network error. Please check your connection and try again.';
+    }
+    
+    return new Response(JSON.stringify({ error: errorMessage }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

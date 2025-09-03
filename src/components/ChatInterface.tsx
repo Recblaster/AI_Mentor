@@ -116,9 +116,9 @@ export const ChatInterface = ({ sessionId, personality, personalityName, onBack 
     setIsLoading(true);
 
     try {
-      // All AI processing happens server-side via Supabase Edge Functions
-      // No API keys or sensitive data exposed to client
-      const response = await supabase.functions.invoke('chat-with-mentor', {
+      console.log('Sending message to chat-with-mentor function...');
+      
+      const { data, error } = await supabase.functions.invoke('chat-with-mentor', {
         body: {
           message: userMessage,
           personality,
@@ -128,12 +128,24 @@ export const ChatInterface = ({ sessionId, personality, personalityName, onBack 
         }
       });
 
-      if (response.error) throw response.error;
+      console.log('Function response:', { data, error });
+
+      if (error) {
+        console.error('Function invocation error:', error);
+        throw new Error(error.message || 'Failed to get response from AI');
+      }
+
+      if (data?.error) {
+        console.error('Function returned error:', data.error);
+        throw new Error(data.error);
+      }
 
       // Refresh messages after sending
+      console.log('Refreshing messages...');
       await fetchMessages();
       
       // Update session message count
+      console.log('Updating session message count...');
       await supabase
         .from('sessions')
         .update({ 
@@ -142,21 +154,34 @@ export const ChatInterface = ({ sessionId, personality, personalityName, onBack 
         })
         .eq('id', sessionId);
 
+      console.log('Message sent successfully');
     } catch (error) {
       console.error('Error sending message:', error);
       
-      // Check if it's a Gemini API quota error
-      const errorMessage = error?.message || '';
-      if (errorMessage.includes('429') || errorMessage.includes('quota') || errorMessage.includes('RESOURCE_EXHAUSTED')) {
+      const errorMessage = error?.message || 'Unknown error';
+      
+      if (errorMessage.includes('quota') || errorMessage.includes('429')) {
         toast({
           title: "API Quota Exceeded",
-          description: "The Gemini API quota has been exceeded. Please check your API plan or wait for the quota to reset.",
+          description: "The AI service is temporarily unavailable. Please try again in a few minutes.",
+          variant: "destructive"
+        });
+      } else if (errorMessage.includes('not properly configured')) {
+        toast({
+          title: "Configuration Error",
+          description: "The AI service is not properly set up. Please contact support.",
+          variant: "destructive"
+        });
+      } else if (errorMessage.includes('network') || errorMessage.includes('fetch')) {
+        toast({
+          title: "Connection Error",
+          description: "Please check your internet connection and try again.",
           variant: "destructive"
         });
       } else {
         toast({
           title: "Error",
-          description: "Failed to send message. Please try again.",
+          description: errorMessage,
           variant: "destructive"
         });
       }
