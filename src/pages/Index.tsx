@@ -1,8 +1,8 @@
-
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from '@/contexts/AuthContext';
+import { toast } from '@/components/ui/use-toast';
 import { TopBar } from '@/components/TopBar';
 import { ChatSidebar } from '@/components/ChatSidebar';
 import { MainChatArea } from '@/components/MainChatArea';

@@ -93,6 +93,7 @@ export const MainChatArea = ({ selectedPersonality, onPersonalitySelect }: MainC
                     variant="ghost"
                     size="icon"
                     className="rounded-full shrink-0 text-muted-foreground hover:text-foreground"
+                    data-testid="settings-button"
                   >
                     <Settings className="h-5 w-5" />
                   </Button>
